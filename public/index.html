@@ -131,6 +131,20 @@ table.dt{width:100%;border-collapse:collapse}
 
 @media(max-width:900px){.ag{grid-template-columns:1fr 1fr}.pg,.ir{grid-template-columns:1fr 1fr}}
 @media(max-width:600px){.hd,.br{padding:8px 10px}.mn{padding:8px 10px}.ag,.pg{grid-template-columns:1fr}.ib{flex-direction:column;align-items:flex-start}.sc{flex-direction:column}#cc{height:240px}.ir{grid-template-columns:repeat(2,1fr)}}
+
+/* Fullscreen Chart */
+.fcBtn{padding:4px 8px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:4px;color:inherit;font-size:11px;cursor:pointer;font-family:'Tajawal';transition:.15s;line-height:1}
+.fcBtn:hover{background:rgba(255,255,255,.12)}
+.fcBtn.active{background:rgba(59,130,246,.2);border-color:var(--bl);color:var(--bl)}
+.fcSmaBtn{font-family:'IBM Plex Mono';font-size:9px;font-weight:600}
+.fcSmaBtn.on{background:rgba(16,185,129,.15);border-color:var(--gn);color:var(--gn)}
+/* Light theme overrides */
+.fc-light #fcBg{background:#f8f9fa!important}
+.fc-light #fcToolbar{background:#fff;border-color:#e0e0e0;color:#333}
+.fc-light #fcStatus{background:#fff;border-color:#e0e0e0;color:#888}
+.fc-light .fcBtn{background:rgba(0,0,0,.04);border-color:rgba(0,0,0,.1);color:#333}
+.fc-light .fcBtn:hover{background:rgba(0,0,0,.08)}
+.fc-light .fcBtn.active{background:rgba(59,130,246,.1);color:var(--bl)}
 </style>
 </head>
 <body>
@@ -175,7 +189,7 @@ table.dt{width:100%;border-collapse:collapse}
     <button class="tf" data-r="6mo" data-i="1d" onclick="ctf(this)">6 أشهر</button>
     <button class="tf" data-r="1y" data-i="1d" onclick="ctf(this)">سنة</button>
     <button class="tf" data-r="2y" data-i="1wk" onclick="ctf(this)">سنتين</button>
-  </div></div><div id="cc"></div></div>
+  </div></div><div id="cc" style="cursor:pointer" onclick="openFullChart()"></div><div style="text-align:center;padding:3px;font-size:8px;color:var(--m);cursor:pointer" onclick="openFullChart()">🔍 اضغط على الشارت للتكبير والرسم</div></div>
 
   <div class="ir">
     <div class="ix"><div class="il">RSI (14)</div><div class="iv" id="rv">-</div><div class="is" id="rs">-</div></div>
@@ -239,6 +253,48 @@ table.dt{width:100%;border-collapse:collapse}
 </div>
 
   <div class="dc">⚠️ تحليل آلي للأغراض التعليمية — ليس نصيحة استثمارية • بيانات Yahoo Finance • إعداد أبو مارية</div>
+
+<!-- FULLSCREEN CHART MODAL -->
+<div id="fcModal" style="display:none;position:fixed;inset:0;z-index:2000;flex-direction:column">
+  <div id="fcBg" style="position:absolute;inset:0;background:#101825"></div>
+  <!-- Toolbar -->
+  <div id="fcToolbar" style="position:relative;z-index:1;display:flex;align-items:center;gap:4px;padding:6px 10px;border-bottom:1px solid var(--bd);flex-wrap:wrap">
+    <span id="fcTitle" style="font-weight:700;font-size:13px;margin-left:8px"></span>
+    <span id="fcPrice" style="font-family:'IBM Plex Mono';font-size:13px;color:var(--cy);margin-left:auto"></span>
+    <div style="width:1px;height:20px;background:var(--bd);margin:0 6px"></div>
+    <!-- Drawing tools -->
+    <button class="fcBtn" onclick="fcSetTool('none')" title="مؤشر" style="font-size:14px">🖱️</button>
+    <button class="fcBtn" onclick="fcSetTool('hline')" title="خط أفقي">━</button>
+    <button class="fcBtn" onclick="fcSetTool('trendline')" title="خط اتجاه">╱</button>
+    <button class="fcBtn" onclick="fcSetTool('rect')" title="مستطيل">▭</button>
+    <button class="fcBtn" onclick="fcClearDrawings()" title="مسح الرسومات">🗑️</button>
+    <div style="width:1px;height:20px;background:var(--bd);margin:0 4px"></div>
+    <!-- Colors -->
+    <button class="fcBtn" onclick="fcSetColor('#10b981')" style="background:#10b981;width:18px;height:18px;border-radius:50%"></button>
+    <button class="fcBtn" onclick="fcSetColor('#ef4444')" style="background:#ef4444;width:18px;height:18px;border-radius:50%"></button>
+    <button class="fcBtn" onclick="fcSetColor('#f59e0b')" style="background:#f59e0b;width:18px;height:18px;border-radius:50%"></button>
+    <button class="fcBtn" onclick="fcSetColor('#3b82f6')" style="background:#3b82f6;width:18px;height:18px;border-radius:50%"></button>
+    <button class="fcBtn" onclick="fcSetColor('#ffffff')" style="background:#fff;width:18px;height:18px;border-radius:50%;border:1px solid #666"></button>
+    <div style="width:1px;height:20px;background:var(--bd);margin:0 4px"></div>
+    <!-- Theme toggle -->
+    <button class="fcBtn" id="fcThemeBtn" onclick="fcToggleTheme()" title="تبديل الثيم">☀️ فاتح</button>
+    <!-- SMA toggles -->
+    <button class="fcBtn fcSmaBtn" id="fcSma20Btn" onclick="fcToggleSMA(20)" title="SMA 20">SMA20</button>
+    <button class="fcBtn fcSmaBtn" id="fcSma50Btn" onclick="fcToggleSMA(50)" title="SMA 50">SMA50</button>
+    <div style="width:1px;height:20px;background:var(--bd);margin:0 4px"></div>
+    <button class="fcBtn" onclick="closeFullChart()" style="font-size:16px;color:var(--rd)" title="إغلاق">✕</button>
+  </div>
+  <!-- Drawing overlay (canvas) -->
+  <div style="position:relative;flex:1;z-index:1">
+    <div id="fcChart" style="width:100%;height:100%"></div>
+    <canvas id="fcCanvas" style="position:absolute;inset:0;z-index:10;pointer-events:none"></canvas>
+  </div>
+  <!-- Tool status -->
+  <div id="fcStatus" style="position:relative;z-index:1;padding:4px 10px;font-size:9px;color:var(--m);border-top:1px solid var(--bd);display:flex;justify-content:space-between">
+    <span id="fcToolName">الأداة: مؤشر</span>
+    <span>اضغط ESC للإغلاق • اختر أداة ثم ارسم على الشارت</span>
+  </div>
+</div>
 
 <script>
 // === TASI STOCKS (Complete) ===
@@ -715,6 +771,193 @@ async function portSell(){
 }
 
 function portReset(){if(confirm('هل تريد إعادة تعيين المحفظة؟')){portfolio={cash:100000,holdings:{},log:[],trades:0,pnl:0};savePort();renderPort();toast('تم إعادة التعيين')}}
+
+// === FULLSCREEN CHART ===
+let fcChartObj=null,fcCandleSeries=null,fcTheme='dark',fcDrawTool='none',fcDrawColor='#3b82f6';
+let fcDrawings=[],fcDrawStart=null,fcIsDrawing=false;
+let fcSma20On=true,fcSma50On=true,fcSma20Series=null,fcSma50Series=null;
+
+function openFullChart(){
+  if(!cD)return;
+  const modal=document.getElementById('fcModal');
+  modal.style.display='flex';
+  document.getElementById('fcTitle').textContent=`${cD.symbol} — ${cD.name}`;
+  document.getElementById('fcPrice').textContent=cD.currentPrice.toFixed(2)+' ر.س';
+  fcTheme='dark';fcDrawings=[];fcDrawStart=null;fcIsDrawing=false;fcDrawTool='none';
+  fcSma20On=true;fcSma50On=true;
+  document.getElementById('fcSma20Btn').classList.add('on');
+  document.getElementById('fcSma50Btn').classList.add('on');
+  setTimeout(()=>renderFullChart(),50);
+  document.addEventListener('keydown',fcEscHandler);
+  // Enable canvas drawing
+  const canvas=document.getElementById('fcCanvas');
+  canvas.style.pointerEvents='none';
+}
+
+function closeFullChart(){
+  document.getElementById('fcModal').style.display='none';
+  if(fcChartObj){fcChartObj.remove();fcChartObj=null}
+  document.removeEventListener('keydown',fcEscHandler);
+  clearCanvas();
+}
+
+function fcEscHandler(e){if(e.key==='Escape')closeFullChart()}
+
+function renderFullChart(){
+  const ct=document.getElementById('fcChart');
+  if(fcChartObj){fcChartObj.remove();fcChartObj=null}
+  ct.innerHTML='';
+  const isDark=fcTheme==='dark';
+  const bg=isDark?'#101825':'#ffffff';
+  const txt=isDark?'#8899b4':'#555555';
+  const grid=isDark?'rgba(26,40,66,.2)':'rgba(0,0,0,.06)';
+  const border=isDark?'rgba(26,40,66,.3)':'rgba(0,0,0,.1)';
+
+  document.getElementById('fcBg').style.background=bg;
+  document.getElementById('fcModal').classList.toggle('fc-light',!isDark);
+
+  fcChartObj=LightweightCharts.createChart(ct,{
+    width:ct.clientWidth,height:ct.clientHeight,
+    layout:{background:{type:'solid',color:bg},textColor:txt,fontFamily:"'IBM Plex Mono'"},
+    grid:{vertLines:{color:grid},horzLines:{color:grid}},
+    crosshair:{mode:LightweightCharts.CrosshairMode.Normal},
+    rightPriceScale:{borderColor:border},
+    timeScale:{borderColor:border,rightOffset:8}
+  });
+
+  const upColor=isDark?'#10b981':'#22c55e';
+  const downColor=isDark?'#ef4444':'#dc2626';
+  fcCandleSeries=fcChartObj.addCandlestickSeries({upColor,downColor,borderUpColor:upColor,borderDownColor:downColor,wickUpColor:upColor+'88',wickDownColor:downColor+'88'});
+  fcCandleSeries.setData(cD.candles.map(c=>({time:c.time,open:c.open,high:c.high,low:c.low,close:c.close})));
+
+  // Volume
+  const vol=fcChartObj.addHistogramSeries({priceFormat:{type:'volume'},priceScaleId:'',scaleMargins:{top:.88,bottom:0}});
+  vol.setData(cD.candles.map(c=>({time:c.time,value:c.volume,color:c.close>=c.open?(isDark?'rgba(16,185,129,.1)':'rgba(34,197,94,.15)'):(isDark?'rgba(239,68,68,.1)':'rgba(220,38,38,.15)')})));
+
+  // SMAs
+  const analyzer=new A(cD.candles);
+  if(fcSma20On){
+    const s20=analyzer.sma(20);fcSma20Series=fcChartObj.addLineSeries({color:'#f59e0b',lineWidth:1,title:'SMA20'});
+    const pts=[];for(let i=0;i<cD.candles.length;i++)if(s20[i]!=null)pts.push({time:cD.candles[i].time,value:s20[i]});
+    fcSma20Series.setData(pts);
+  }
+  if(fcSma50On){
+    const s50=analyzer.sma(50);fcSma50Series=fcChartObj.addLineSeries({color:'#8b5cf6',lineWidth:1,title:'SMA50'});
+    const pts=[];for(let i=0;i<cD.candles.length;i++)if(s50[i]!=null)pts.push({time:cD.candles[i].time,value:s50[i]});
+    fcSma50Series.setData(pts);
+  }
+
+  // Pivot lines
+  const pv=analyzer.pivots();
+  [{p:pv.r2,t:'R2',c:upColor,s:2},{p:pv.r1,t:'R1',c:upColor,s:1},{p:pv.pp,t:'PP',c:'#f59e0b',s:0},{p:pv.s1,t:'S1',c:downColor,s:1},{p:pv.s2,t:'S2',c:downColor,s:2}].forEach(l=>fcCandleSeries.createPriceLine({price:l.p,color:l.c,lineWidth:l.s===0?2:1,lineStyle:l.s,axisLabelVisible:true,title:l.t}));
+
+  fcChartObj.timeScale().fitContent();
+  new ResizeObserver(()=>{if(fcChartObj)fcChartObj.applyOptions({width:ct.clientWidth,height:ct.clientHeight})}).observe(ct);
+
+  // Resize canvas
+  const canvas=document.getElementById('fcCanvas');
+  canvas.width=ct.clientWidth;canvas.height=ct.clientHeight;
+  redrawCanvas();
+
+  // Drawing event listeners
+  setupDrawingListeners();
+}
+
+function fcToggleTheme(){
+  fcTheme=fcTheme==='dark'?'light':'dark';
+  document.getElementById('fcThemeBtn').textContent=fcTheme==='dark'?'☀️ فاتح':'🌙 داكن';
+  renderFullChart();
+}
+
+function fcSetTool(tool){
+  fcDrawTool=tool;
+  const canvas=document.getElementById('fcCanvas');
+  canvas.style.pointerEvents=tool==='none'?'none':'auto';
+  canvas.style.cursor=tool==='none'?'default':'crosshair';
+  document.querySelectorAll('.fcBtn').forEach(b=>b.classList.remove('active'));
+  const names={none:'مؤشر',hline:'خط أفقي',trendline:'خط اتجاه',rect:'مستطيل'};
+  document.getElementById('fcToolName').textContent='الأداة: '+(names[tool]||tool);
+}
+
+function fcSetColor(c){fcDrawColor=c}
+
+function fcClearDrawings(){fcDrawings=[];clearCanvas()}
+
+function clearCanvas(){
+  const canvas=document.getElementById('fcCanvas');
+  const ctx=canvas.getContext('2d');
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+}
+
+function redrawCanvas(){
+  const canvas=document.getElementById('fcCanvas');
+  const ctx=canvas.getContext('2d');
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  for(const d of fcDrawings){
+    ctx.strokeStyle=d.color;ctx.lineWidth=2;ctx.setLineDash(d.type==='hline'?[6,3]:[]);
+    ctx.beginPath();
+    if(d.type==='hline'){ctx.moveTo(0,d.y);ctx.lineTo(canvas.width,d.y)}
+    else if(d.type==='trendline'){ctx.moveTo(d.x1,d.y1);ctx.lineTo(d.x2,d.y2)}
+    else if(d.type==='rect'){ctx.strokeRect(Math.min(d.x1,d.x2),Math.min(d.y1,d.y2),Math.abs(d.x2-d.x1),Math.abs(d.y2-d.y1))}
+    ctx.stroke();ctx.setLineDash([]);
+  }
+}
+
+function setupDrawingListeners(){
+  const canvas=document.getElementById('fcCanvas');
+  // Remove old listeners
+  canvas.onmousedown=null;canvas.onmousemove=null;canvas.onmouseup=null;
+  canvas.ontouchstart=null;canvas.ontouchmove=null;canvas.ontouchend=null;
+
+  function getPos(e){
+    const r=canvas.getBoundingClientRect();
+    const t=e.touches?e.touches[0]:e;
+    return{x:t.clientX-r.left,y:t.clientY-r.top};
+  }
+
+  function onStart(e){
+    if(fcDrawTool==='none')return;
+    e.preventDefault();
+    const p=getPos(e);
+    if(fcDrawTool==='hline'){
+      fcDrawings.push({type:'hline',y:p.y,color:fcDrawColor});
+      redrawCanvas();
+    }else{
+      fcIsDrawing=true;
+      fcDrawStart={x:p.x,y:p.y};
+    }
+  }
+
+  function onMove(e){
+    if(!fcIsDrawing||fcDrawTool==='none')return;
+    e.preventDefault();
+    const p=getPos(e);
+    redrawCanvas();
+    const ctx=canvas.getContext('2d');
+    ctx.strokeStyle=fcDrawColor;ctx.lineWidth=2;ctx.globalAlpha=0.6;
+    ctx.beginPath();
+    if(fcDrawTool==='trendline'){ctx.moveTo(fcDrawStart.x,fcDrawStart.y);ctx.lineTo(p.x,p.y)}
+    else if(fcDrawTool==='rect'){ctx.strokeRect(Math.min(fcDrawStart.x,p.x),Math.min(fcDrawStart.y,p.y),Math.abs(p.x-fcDrawStart.x),Math.abs(p.y-fcDrawStart.y))}
+    ctx.stroke();ctx.globalAlpha=1;
+  }
+
+  function onEnd(e){
+    if(!fcIsDrawing||fcDrawTool==='none')return;
+    const p=getPos(e.changedTouches?e.changedTouches[0]:e);
+    fcDrawings.push({type:fcDrawTool,x1:fcDrawStart.x,y1:fcDrawStart.y,x2:p.x,y2:p.y,color:fcDrawColor});
+    fcIsDrawing=false;fcDrawStart=null;
+    redrawCanvas();
+  }
+
+  canvas.onmousedown=onStart;canvas.onmousemove=onMove;canvas.onmouseup=onEnd;
+  canvas.ontouchstart=onStart;canvas.ontouchmove=onMove;canvas.ontouchend=onEnd;
+}
+
+function fcToggleSMA(period){
+  if(period===20){fcSma20On=!fcSma20On;document.getElementById('fcSma20Btn').classList.toggle('on')}
+  if(period===50){fcSma50On=!fcSma50On;document.getElementById('fcSma50Btn').classList.toggle('on')}
+  renderFullChart();
+}
 </script>
 </body>
 </html>

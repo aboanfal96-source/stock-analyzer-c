@@ -254,7 +254,8 @@ const T={
 };
 
 // === SCREENER LIST (Top 45 most liquid) ===
-const SCAN=['2222','1120','1150','1180','2010','7010','2280','4190','2330','4030','1010','1020','4011','2350','4050','1211','4161','4164','2050','1060','1050','1140','4220','4001','2170','2320','4240','4260','6001','6015','7020','7030','5110','2040','2060','2110','2370','8010','8210','4009','4007','2020','3020','3030','4013','1213','4008','4010'];
+// Scan ALL TASI stocks
+const SCAN=Object.keys(T);
 
 const POP=['2222','1120','4011','1150','2010','7010','2280','4190','2330','1180','4030','2350','4050','1010','1211','4161','4164'];
 const qr=document.getElementById('qr');
@@ -597,32 +598,52 @@ async function runScreener(){
   document.getElementById('scrSec').style.display='block';
   const tbody=document.querySelector('#scrTbl tbody');tbody.innerHTML='';
   const prog=document.getElementById('scrProg');
-  let found=0;
-  for(let i=0;i<SCAN.length;i++){
-    const sym=SCAN[i];
-    prog.textContent=`جاري فحص ${T[sym]} (${i+1}/${SCAN.length})...`;
+  const total=SCAN.length;
+  let done=0,found=0,failed=0;
+  const results=[];
+
+  // Process in parallel batches of 3
+  const BATCH=3;
+  for(let i=0;i<total;i+=BATCH){
+    const batch=SCAN.slice(i,i+BATCH);
+    const pct=Math.round(done/total*100);
+    prog.innerHTML=`<div style="margin-bottom:4px">جاري فحص ${done}/${total} سهم (${pct}%) — وجد ${found} فرصة حتى الآن — فشل ${failed}</div><div style="background:var(--bd);border-radius:4px;height:6px;overflow:hidden"><div style="background:linear-gradient(90deg,var(--bl),var(--cy));height:100%;width:${pct}%;transition:width .3s"></div></div>`;
     prog.style.display='block';
-    try{
-      const d=await fetchData(sym,'6mo','1d');
-      const a=new A(d.candles);
-      const sig=a.overall();
-      const rsi=a.rsi();const lr=rsi[rsi.length-1];
-      if(sig.sc>15){
-        found++;
-        const cls=sig.sc>40?'bu':sig.sc>20?'bu':'ne';
-        const txt=sig.sc>40?'شراء قوي':sig.sc>20?'شراء':'شراء خفيف';
-        const pct=sig.sc.toFixed(0);
-        const row=document.createElement('tr');
-        row.style.cursor='pointer';
-        row.onclick=()=>{document.getElementById('inp').value=sym;go()};
-        row.innerHTML=`<td><span class="tg su"><span class="dd b"></span>${sym}</span> ${T[sym]}</td><td style="font-family:'IBM Plex Mono'">${d.currentPrice.toFixed(2)}</td><td><span class="ps ${cls}">${txt}</span></td><td style="color:var(--gn);font-family:'IBM Plex Mono'">${pct}%</td><td style="font-family:'IBM Plex Mono';color:${lr>70?'var(--rd)':lr<30?'var(--gn)':'var(--t2)'}">${lr?.toFixed(0)||'-'}</td><td style="font-size:9px;color:var(--t2)">${sig.bu} شراء / ${sig.be} بيع</td>`;
-        tbody.appendChild(row);
-      }
-    }catch(e){console.log(sym+': '+e.message)}
-    await new Promise(r=>setTimeout(r,300));// Rate limit
+
+    const promises=batch.map(async sym=>{
+      try{
+        const d=await fetchData(sym,'3mo','1d');
+        const a=new A(d.candles);
+        const sig=a.overall();
+        const rsi=a.rsi();const lr=rsi[rsi.length-1];
+        const chg=((d.currentPrice-d.previousClose)/d.previousClose*100);
+        return{sym,name:T[sym],price:d.currentPrice,chg,score:sig.sc,bu:sig.bu,be:sig.be,tot:sig.tot,rsi:lr,ok:true};
+      }catch(e){return{sym,ok:false}}
+    });
+
+    const batchResults=await Promise.all(promises);
+    for(const r of batchResults){
+      done++;
+      if(!r.ok){failed++;continue}
+      if(r.score>10){found++;results.push(r)}
+    }
+    await new Promise(r=>setTimeout(r,200));
   }
-  prog.textContent=found?`✅ تم فحص ${SCAN.length} سهم — وجد ${found} فرصة شراء`:'❌ لم يتم العثور على فرص شراء حالياً';
-  document.getElementById('scrCount').textContent=`(${found} فرصة)`;
+
+  // Sort by score descending
+  results.sort((a,b)=>b.score-a.score);
+
+  // Render results
+  tbody.innerHTML=results.map(r=>{
+    const cls=r.score>40?'bu':r.score>20?'bu':'ne';
+    const txt=r.score>50?'شراء قوي جداً':r.score>30?'شراء قوي':r.score>15?'شراء':'شراء خفيف';
+    const chgColor=r.chg>=0?'var(--gn)':'var(--rd)';
+    const rsiColor=r.rsi>70?'var(--rd)':r.rsi<30?'var(--gn)':'var(--t2)';
+    return`<tr style="cursor:pointer" onclick="document.getElementById('inp').value='${r.sym}';go()"><td><span class="tg su"><span class="dd b"></span>${r.sym}</span> ${r.name}</td><td style="font-family:'IBM Plex Mono'">${r.price.toFixed(2)} <span style="font-size:8px;color:${chgColor}">${r.chg>=0?'+':''}${r.chg.toFixed(1)}%</span></td><td><span class="ps ${cls}">${txt}</span></td><td style="color:var(--gn);font-family:'IBM Plex Mono';font-weight:700">${r.score.toFixed(0)}%</td><td style="font-family:'IBM Plex Mono';color:${rsiColor}">${r.rsi?.toFixed(0)||'-'}</td><td style="font-size:9px;color:var(--t2)">${r.bu}↑ ${r.be}↓ من ${r.tot}</td></tr>`;
+  }).join('');
+
+  prog.innerHTML=`<div style="color:var(--gn)">✅ تم فحص ${done} سهم — وجد <strong>${found}</strong> فرصة شراء${failed?' — '+failed+' سهم بدون بيانات':''}</div>`;
+  document.getElementById('scrCount').textContent=`(${found} فرصة من ${total})`;
 }
 
 // === VIRTUAL PORTFOLIO ===

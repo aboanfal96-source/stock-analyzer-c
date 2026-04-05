@@ -222,13 +222,33 @@ table.dt{width:100%;border-collapse:collapse}
   </div>
 
   <div class="ss"><div class="ah"><div class="ai g">⚡</div>ملخص التحليل</div><div class="sc" id="smc"></div></div>
+
+  <!-- SMC Smart Money -->
+  <div class="ac" style="margin-bottom:10px"><div class="ah"><div class="ai y">🏦</div>مراقب السيولة الذكية (SMC)<span style="margin-right:8px;font-size:9px;color:var(--m)">FVG • Order Blocks • VWAP</span></div><div class="ab2" id="smcPanel"></div></div>
+
+  <!-- Risk Calculator -->
+  <div class="ac" style="margin-bottom:10px"><div class="ah"><div class="ai r">⚖️</div>إدارة المخاطر</div>
+  <div class="ab2">
+    <div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap;align-items:center">
+      <label style="font-size:10px;color:var(--t2)">رأس المال:</label>
+      <input id="riskCap" type="number" value="100000" style="padding:5px 8px;background:var(--bg);border:1px solid var(--bd);border-radius:5px;color:var(--cy);font-family:'IBM Plex Mono';font-size:11px;width:90px;outline:none">
+      <label style="font-size:10px;color:var(--t2)">المخاطرة %:</label>
+      <input id="riskPct" type="number" value="1" step="0.5" min="0.5" max="10" style="padding:5px 8px;background:var(--bg);border:1px solid var(--bd);border-radius:5px;color:var(--cy);font-family:'IBM Plex Mono';font-size:11px;width:50px;outline:none">
+      <button onclick="calcRisk()" style="padding:5px 12px;background:linear-gradient(135deg,var(--bl),var(--cy));border:none;border-radius:5px;color:#fff;font-size:10px;font-weight:700;cursor:pointer;font-family:'Tajawal'">حساب ⚖️</button>
+    </div>
+    <div id="riskResult" style="font-size:10px;color:var(--t2)">أدخل رأس المال ونسبة المخاطرة ثم اضغط حساب</div>
+  </div></div>
+
+  <!-- AI Analyst Summary -->
+  <div class="ac" style="margin-bottom:10px"><div class="ah"><div class="ai p">🤖</div>المحلل الذكي (AI Analyst)<span id="mtfIcons" style="margin-right:8px;font-size:12px"></span></div>
+  <div class="ab2" id="aiPanel" style="font-size:11px;color:var(--t2);line-height:1.8;padding:10px">سيظهر التحليل الذكي بعد تحليل السهم</div></div>
 </div>
 
 <!-- SCREENER SECTION -->
 <div id="scrSec" style="display:none">
   <div class="ac" style="margin-bottom:10px"><div class="ah"><div class="ai g">🔍</div>ماسح الأسهم — إشارات الشراء<span id="scrCount" style="margin-right:8px;color:var(--cy);font-size:10px"></span></div>
   <div class="ab2" id="scrProg" style="padding:10px;color:var(--m);font-size:11px">جاري الفحص...</div>
-  <div class="ab2"><table class="dt" id="scrTbl"><thead><tr><th>السهم</th><th>السعر</th><th>الإشارة</th><th>القوة</th><th>RSI</th><th>تحليل</th></tr></thead><tbody></tbody></table></div></div>
+  <div class="ab2"><table class="dt" id="scrTbl"><thead><tr><th>السهم</th><th>السعر</th><th>الإشارة</th><th>القوة</th><th>RSI</th><th>VWAP</th><th>حجم</th><th>ADX</th><th>SMC</th></tr></thead><tbody></tbody></table></div></div>
 </div>
 
 <!-- PORTFOLIO SECTION -->
@@ -506,6 +526,132 @@ class A{
     r.push({n:'Stochastic %K',v:stoch.k.toFixed(0),d:stoch.k>80?'تشبع شرائي':stoch.k<20?'تشبع بيعي':'محايد',s:stoch.k>80?'be':stoch.k<20?'bu':'ne'});
     return r}
 
+  // === SMART MONEY CONCEPTS (SMC) ===
+  // VWAP
+  vwap(){const r=[];let cumVP=0,cumV=0;for(let i=0;i<this.c.length;i++){const tp=(this.hi[i]+this.lo[i]+this.cl[i])/3;cumVP+=tp*this.vo[i];cumV+=this.vo[i];r.push(cumV?cumVP/cumV:tp)}return r}
+
+  // Fair Value Gaps (FVG)
+  fairValueGaps(){const gaps=[],n=this.c.length;for(let i=2;i<n;i++){
+    // Bullish FVG: candle[i] low > candle[i-2] high (gap up)
+    if(this.lo[i]>this.hi[i-2]){const size=(this.lo[i]-this.hi[i-2])/this.cl[i]*100;if(size>0.3)gaps.push({type:'bu',top:this.lo[i],bot:this.hi[i-2],idx:i,size:+size.toFixed(2),filled:this.cl[n-1]<=this.lo[i]})}
+    // Bearish FVG: candle[i] high < candle[i-2] low (gap down)
+    if(this.hi[i]<this.lo[i-2]){const size=(this.lo[i-2]-this.hi[i])/this.cl[i]*100;if(size>0.3)gaps.push({type:'be',top:this.lo[i-2],bot:this.hi[i],idx:i,size:+size.toFixed(2),filled:this.cl[n-1]>=this.hi[i]})}
+  }return gaps.slice(-6)}
+
+  // Order Blocks (OB) - engulfing candles with high volume
+  orderBlocks(){const obs=[],n=this.c.length;const avgVol=this.sma(20,this.vo);
+    for(let i=1;i<n-1;i++){
+      if(!avgVol[i]||avgVol[i]===0)continue;
+      const volRatio=this.vo[i]/avgVol[i];
+      const body=Math.abs(this.cl[i]-this.op[i]);const prevBody=Math.abs(this.cl[i-1]-this.op[i-1]);
+      // Bullish OB: bearish candle followed by strong bullish engulfing with high volume
+      if(this.cl[i-1]<this.op[i-1]&&this.cl[i]>this.op[i]&&body>prevBody&&volRatio>1.5){
+        obs.push({type:'bu',top:Math.max(this.op[i-1],this.cl[i-1]),bot:Math.min(this.op[i-1],this.cl[i-1]),idx:i,vol:+volRatio.toFixed(1)})
+      }
+      // Bearish OB
+      if(this.cl[i-1]>this.op[i-1]&&this.cl[i]<this.op[i]&&body>prevBody&&volRatio>1.5){
+        obs.push({type:'be',top:Math.max(this.op[i-1],this.cl[i-1]),bot:Math.min(this.op[i-1],this.cl[i-1]),idx:i,vol:+volRatio.toFixed(1)})
+      }
+    }return obs.slice(-6)}
+
+  // SMC Summary for display
+  smcAnalysis(){const r=[];const n=this.c.length;const price=this.cl[n-1];
+    // FVGs
+    const fvgs=this.fairValueGaps();
+    const unfilled=fvgs.filter(f=>!f.filled);
+    unfilled.forEach(f=>{
+      const dist=((f.type==='bu'?f.bot:f.top)-price)/price*100;
+      r.push({n:`FVG ${f.type==='bu'?'صعودي':'هبوطي'} (${f.bot.toFixed(2)}-${f.top.toFixed(2)})`,d:`فجوة قيمة ${f.filled?'مملوءة':'غير مملوءة'} — حجم ${f.size}%`,s:f.type,str:70,zone:{top:f.top,bot:f.bot,type:f.type}})
+    });
+    // Order Blocks
+    const obs=this.orderBlocks();
+    const recent=obs.filter(o=>n-o.idx<30);
+    recent.forEach(o=>{
+      const nearPrice=price>=o.bot&&price<=o.top;
+      r.push({n:`OB ${o.type==='bu'?'شرائي':'بيعي'} (${o.bot.toFixed(2)}-${o.top.toFixed(2)})`,d:`حجم ${o.vol}x من المتوسط${nearPrice?' — السعر في المنطقة!':''}`,s:o.type,str:nearPrice?90:65,zone:{top:o.top,bot:o.bot,type:o.type}})
+    });
+    // VWAP position
+    const vwapVal=this.vwap();const lv=vwapVal[n-1];
+    if(lv){r.push({n:`VWAP: ${lv.toFixed(2)}`,d:price>lv?'السعر فوق VWAP — ضغط شرائي':'السعر تحت VWAP — ضغط بيعي',s:price>lv?'bu':'be',str:60})}
+    // Liquidity sweeps
+    let recentHigh=-Infinity,recentLow=Infinity;
+    for(let i=Math.max(0,n-20);i<n-1;i++){if(this.hi[i]>recentHigh)recentHigh=this.hi[i];if(this.lo[i]<recentLow)recentLow=this.lo[i]}
+    if(this.hi[n-1]>recentHigh&&this.cl[n-1]<recentHigh)r.push({n:'اكتساح سيولة علوي',d:'اخترق القمة ثم عاد — فخ شرائي محتمل',s:'be',str:80});
+    if(this.lo[n-1]<recentLow&&this.cl[n-1]>recentLow)r.push({n:'اكتساح سيولة سفلي',d:'كسر القاع ثم عاد — فخ بيعي محتمل (تجميع)',s:'bu',str:80});
+    return r}
+
+  // === AI ANALYST - collect all signals into summary object ===
+  aiAnalyst(){
+    const n=this.c.length;const price=this.cl[n-1];
+    const rsi=this.rsi();const lr=rsi[rsi.length-1];
+    const md=this.macd();const lm=md.histogram[md.histogram.length-1];
+    const adxVal=this.adx();
+    const s50=this.sma(50);const s200=this.sma(200);
+    const bb=this.bollinger();const lb=bb[n-1];
+    const stoch=this.stochastic();
+    const fib=this.fibonacci();
+    const pv=this.pivots();
+    const sig=this.overall();
+    const smc=this.smcAnalysis();
+    const vwapVal=this.vwap()[n-1];
+    const atrVal=this.atr();const la=atrVal[atrVal.length-1];
+
+    // Build text summary
+    let txt='';
+    // Overall
+    if(sig.sc>30)txt+='📈 السهم يعطي إشارات شراء قوية. ';
+    else if(sig.sc>10)txt+='📊 السهم يميل للإيجابية بشكل خفيف. ';
+    else if(sig.sc<-30)txt+='📉 السهم يعطي إشارات بيع واضحة. ';
+    else if(sig.sc<-10)txt+='⚠️ السهم يميل للسلبية. ';
+    else txt+='↔️ السهم في حالة تذبذب وانتظار. ';
+    // RSI
+    if(lr>70)txt+=`RSI عند ${lr.toFixed(0)} (تشبع شرائي — احذر). `;
+    else if(lr<30)txt+=`RSI عند ${lr.toFixed(0)} (تشبع بيعي — فرصة ارتداد). `;
+    // MACD
+    txt+=lm>0?'MACD إيجابي يدعم الصعود. ':'MACD سلبي يضغط على السعر. ';
+    // ADX
+    if(adxVal)txt+=adxVal>40?`اتجاه قوي جداً (ADX:${adxVal.toFixed(0)}). `:adxVal>25?`اتجاه واضح (ADX:${adxVal.toFixed(0)}). `:'لا يوجد اتجاه واضح — سوق عرضي. ';
+    // VWAP
+    if(vwapVal)txt+=price>vwapVal?'السعر فوق VWAP — سيطرة المشترين. ':'السعر تحت VWAP — سيطرة البائعين. ';
+    // Fibonacci
+    txt+=`أقرب مستوى فيبوناتشي: ${fib.nearest.l} عند ${fib.nearest.p}. `;
+    // SMC
+    const buOB=smc.filter(s=>s.s==='bu'&&s.str>=70);
+    const beOB=smc.filter(s=>s.s==='be'&&s.str>=70);
+    if(buOB.length)txt+=`🟢 يوجد ${buOB.length} منطقة طلب (OB شرائي). `;
+    if(beOB.length)txt+=`🔴 يوجد ${beOB.length} منطقة عرض (OB بيعي). `;
+    // Targets
+    const tg=this.targets();
+    txt+=`الهدف الأول: ${tg[0].p} (+${tg[0].pc}%). `;
+    // Stop
+    const st=this.stops();
+    txt+=`وقف الخسارة: ${st[0].p} (${st[0].pc}%). `;
+    // Risk/Reward
+    const rr=Math.abs((tg[0].p-price)/(price-st[0].p));
+    txt+=`نسبة العائد/المخاطرة: ${rr.toFixed(1)}:1. `;
+
+    return{
+      summary:txt,score:sig.sc,signal:sig.sc>20?'شراء':sig.sc<-20?'بيع':'انتظار',
+      rsi:lr,macd:lm,adx:adxVal,vwap:vwapVal,price,
+      entry:price,stopLoss:st[0].p,target1:tg[0].p,target2:tg[1].p,
+      riskReward:+rr.toFixed(2),atr:la,
+      smcZones:smc.filter(s=>s.zone).map(s=>s.zone)
+    }}
+
+  // === RISK CALCULATOR ===
+  riskCalc(capital,riskPct){
+    const price=this.cl[this.cl.length-1];
+    const st=this.stops();const stopPrice=st[0].p;
+    const tg=this.targets();const target1=tg[0].p;
+    const riskPerShare=Math.abs(price-stopPrice);
+    const riskAmount=capital*(riskPct/100);
+    const shares=riskPerShare>0?Math.floor(riskAmount/riskPerShare):0;
+    const positionSize=shares*price;
+    const maxLoss=shares*riskPerShare;
+    const potentialProfit=shares*(target1-price);
+    const rrRatio=riskPerShare>0?(target1-price)/riskPerShare:0;
+    return{shares,positionSize:+positionSize.toFixed(2),maxLoss:+maxLoss.toFixed(2),potentialProfit:+potentialProfit.toFixed(2),rrRatio:+rrRatio.toFixed(2),entry:price,stop:stopPrice,target:target1,riskPct,capital}}
+
   patterns(){const pt=[],n=this.c.length;if(n<20)return pt;const rc=this.c.slice(-30),rH=rc.map(c=>c.high),rL=rc.map(c=>c.low);let m1=-Infinity,m1i=0;for(let i=0;i<rH.length;i++)if(rH[i]>m1){m1=rH[i];m1i=i}let m2=-Infinity,m2i=0;for(let i=0;i<rH.length;i++)if(Math.abs(i-m1i)>5&&rH[i]>m2){m2=rH[i];m2i=i}if(Math.abs(m1-m2)/m1<.02&&Math.abs(m1i-m2i)>5)pt.push({n:'قمة مزدوجة',e:'Double Top',t:'انعكاسي',s:'be',c:70});let n1=Infinity,n1i=0;for(let i=0;i<rL.length;i++)if(rL[i]<n1){n1=rL[i];n1i=i}let n2=Infinity,n2i=0;for(let i=0;i<rL.length;i++)if(Math.abs(i-n1i)>5&&rL[i]<n2){n2=rL[i];n2i=i}if(Math.abs(n1-n2)/n1<.02&&Math.abs(n1i-n2i)>5)pt.push({n:'قاع مزدوج',e:'Double Bottom',t:'انعكاسي',s:'bu',c:70});
     // Head & Shoulders
     if(n>=40){const sg=Math.floor(Math.min(10,n/4));for(let i=Math.max(0,n-40);i<n-20;i++){let ls=-Infinity,hd=-Infinity,rs=-Infinity;for(let j=i;j<i+sg&&j<n;j++)if(this.hi[j]>ls)ls=this.hi[j];for(let j=i+sg;j<i+2*sg&&j<n;j++)if(this.hi[j]>hd)hd=this.hi[j];for(let j=i+2*sg;j<Math.min(i+3*sg,n);j++)if(this.hi[j]>rs)rs=this.hi[j];if(hd>ls&&hd>rs&&Math.abs(ls-rs)/hd<.05){pt.push({n:'رأس وكتفين',e:'Head & Shoulders',t:'انعكاسي',s:'be',c:80});break}}}
@@ -623,6 +769,70 @@ function updateUI(d,a){
 
   const sig=a.overall();let cls,txt;if(sig.sc>20){cls='bu';txt='إيجابي — شراء'}else if(sig.sc<-20){cls='be';txt='سلبي — بيع'}else{cls='ne';txt='محايد — انتظار'}
   document.getElementById('smc').innerHTML=`<div style="text-align:center"><div class="st ${cls}" style="font-size:18px;margin-bottom:4px">${txt}</div><div style="display:flex;gap:14px;justify-content:center;margin-top:6px"><div><div style="font-size:18px;font-weight:800;color:var(--gn)">${sig.bu}</div><div style="font-size:8px;color:var(--m)">شراء</div></div><div><div style="font-size:18px;font-weight:800;color:var(--rd)">${sig.be}</div><div style="font-size:8px;color:var(--m)">بيع</div></div><div><div style="font-size:18px;font-weight:800;color:var(--t2)">${sig.tot}</div><div style="font-size:8px;color:var(--m)">إجمالي</div></div></div></div><div style="flex:1;font-size:10px;color:var(--t2)"><div>• RSI: ${lr?.toFixed(1)} — ${lr>70?'تشبع شرائي':lr<30?'تشبع بيعي':'محايد'}</div><div>• ${dSrc}</div><div>• وقف الخسارة محسوب على ATR</div></div>`;
+
+  // === SMC PANEL ===
+  const smcData=a.smcAnalysis();
+  document.getElementById('smcPanel').innerHTML=smcData.length?smcData.map(s=>`<div class="pi"><div><div class="pn">${s.n}</div><div class="pt">${s.d}</div></div><span class="ps ${s.s}">${SG[s.s]} ${s.str}%</span></div>`).join(''):'<div style="padding:14px;text-align:center;color:var(--m);font-size:10px">لم يتم اكتشاف مناطق سيولة ذكية</div>';
+
+  // === AI ANALYST ===
+  const ai=a.aiAnalyst();
+  const sigIcon=ai.score>20?'🟢':ai.score<-20?'🔴':'🟡';
+  const sigColor=ai.score>20?'var(--gn)':ai.score<-20?'var(--rd)':'var(--yl)';
+  document.getElementById('aiPanel').innerHTML=`
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;padding:8px;background:rgba(${ai.score>20?'16,185,129':ai.score<-20?'239,68,68':'245,158,11'},.06);border-radius:6px;border:1px solid rgba(${ai.score>20?'16,185,129':ai.score<-20?'239,68,68':'245,158,11'},.15)">
+      <span style="font-size:24px">${sigIcon}</span>
+      <div><div style="font-weight:800;font-size:14px;color:${sigColor}">${ai.signal} (${ai.score.toFixed(0)}%)</div>
+      <div style="font-size:9px;color:var(--m)">R/R: ${ai.riskReward}:1 | RSI: ${ai.rsi?.toFixed(0)} | ADX: ${ai.adx?.toFixed(0)||'-'}</div></div>
+    </div>
+    <div style="line-height:1.9;font-size:11px">${ai.summary}</div>
+    <div style="margin-top:8px;display:flex;gap:12px;font-size:10px;flex-wrap:wrap">
+      <span>📍 دخول: <b style="color:var(--cy)">${ai.entry.toFixed(2)}</b></span>
+      <span>🎯 هدف: <b style="color:var(--gn)">${ai.target1.toFixed(2)}</b></span>
+      <span>🛑 وقف: <b style="color:var(--rd)">${ai.stopLoss.toFixed(2)}</b></span>
+      <span>📊 VWAP: <b>${ai.vwap?.toFixed(2)||'-'}</b></span>
+    </div>`;
+
+  // === MULTI-TIMEFRAME ICONS ===
+  // Simple approximation using different SMA periods as proxy for timeframes
+  const s5d=a.sma(5),s10d=a.sma(10),s20d=a.sma(20);
+  const pr2=a.cl[a.cl.length-1];
+  const tf1h=s5d[s5d.length-1]?pr2>s5d[s5d.length-1]?'🟢':'🔴':'⚪';
+  const tf4h=s10d[s10d.length-1]?pr2>s10d[s10d.length-1]?'🟢':'🔴':'⚪';
+  const tfD=s20d[s20d.length-1]?pr2>s20d[s20d.length-1]?'🟢':'🔴':'⚪';
+  document.getElementById('mtfIcons').innerHTML=`<span title="ساعة" style="cursor:help">${tf1h}</span><span title="4 ساعات" style="cursor:help">${tf4h}</span><span title="يومي" style="cursor:help">${tfD}</span> <span style="font-size:8px;color:var(--m)">1H 4H D</span>`;
+}
+
+// === RISK CALCULATOR ===
+function calcRisk(){
+  if(!cD){toast('حلل سهم أولاً');return}
+  const cap=parseFloat(document.getElementById('riskCap').value)||100000;
+  const pct=parseFloat(document.getElementById('riskPct').value)||1;
+  const a2=new A(cD.candles);
+  const rc=a2.riskCalc(cap,pct);
+  const profitColor=rc.potentialProfit>=0?'var(--gn)':'var(--rd)';
+  const rrColor=rc.rrRatio>=2?'var(--gn)':rc.rrRatio>=1?'var(--yl)':'var(--rd)';
+  document.getElementById('riskResult').innerHTML=`
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:6px">
+      <div style="background:var(--bg);padding:8px;border-radius:6px;text-align:center">
+        <div style="font-size:8px;color:var(--m)">عدد الأسهم</div>
+        <div style="font-size:16px;font-weight:800;color:var(--cy);font-family:'IBM Plex Mono'">${rc.shares}</div>
+      </div>
+      <div style="background:var(--bg);padding:8px;border-radius:6px;text-align:center">
+        <div style="font-size:8px;color:var(--m)">حجم الصفقة</div>
+        <div style="font-size:13px;font-weight:700;font-family:'IBM Plex Mono'">${rc.positionSize.toLocaleString()} <span style="font-size:8px">ر.س</span></div>
+      </div>
+      <div style="background:var(--bg);padding:8px;border-radius:6px;text-align:center">
+        <div style="font-size:8px;color:var(--m)">R/R نسبة العائد/المخاطرة</div>
+        <div style="font-size:16px;font-weight:800;color:${rrColor};font-family:'IBM Plex Mono'">${rc.rrRatio}:1</div>
+      </div>
+    </div>
+    <div style="display:flex;gap:12px;margin-top:6px;font-size:10px;flex-wrap:wrap">
+      <span>📍 دخول: <b style="color:var(--cy)">${rc.entry.toFixed(2)}</b></span>
+      <span>🛑 وقف: <b style="color:var(--rd)">${rc.stop.toFixed(2)}</b></span>
+      <span>🎯 هدف: <b style="color:var(--gn)">${rc.target.toFixed(2)}</b></span>
+      <span>❌ أقصى خسارة: <b style="color:var(--rd)">${rc.maxLoss.toFixed(2)} ر.س</b></span>
+      <span>✅ ربح محتمل: <b style="color:${profitColor}">${rc.potentialProfit.toFixed(2)} ر.س</b></span>
+    </div>`;
 }
 
 // === MAIN ===
@@ -673,7 +883,16 @@ async function runScreener(){
         const sig=a.overall();
         const rsi=a.rsi();const lr=rsi[rsi.length-1];
         const chg=((d.currentPrice-d.previousClose)/d.previousClose*100);
-        return{sym,name:T[sym],price:d.currentPrice,chg,score:sig.sc,bu:sig.bu,be:sig.be,tot:sig.tot,rsi:lr,ok:true};
+        // Advanced: VWAP, Volume, ADX
+        const vwap=a.vwap();const lv=vwap[vwap.length-1];
+        const avgVol=a.sma(10,a.vo);const volRatio=avgVol[avgVol.length-1]?a.vo[a.vo.length-1]/avgVol[avgVol.length-1]:1;
+        const adxVal=a.adx();
+        const aboveVwap=lv?d.currentPrice>lv:false;
+        // SMC zones
+        const smcZ=a.smcAnalysis().filter(s=>s.str>=70).length;
+        // Trend strength label
+        let trendStr='';if(adxVal){if(adxVal>40)trendStr='💪 قوي';else if(adxVal>25)trendStr='📊 معتدل';else trendStr='↔️ عرضي'}
+        return{sym,name:T[sym],price:d.currentPrice,chg,score:sig.sc,bu:sig.bu,be:sig.be,tot:sig.tot,rsi:lr,aboveVwap,volRatio:+volRatio.toFixed(1),adx:adxVal,trendStr,smcZ,ok:true};
       }catch(e){return{sym,ok:false}}
     });
 
@@ -695,7 +914,7 @@ async function runScreener(){
     const txt=r.score>50?'شراء قوي جداً':r.score>30?'شراء قوي':r.score>15?'شراء':'شراء خفيف';
     const chgColor=r.chg>=0?'var(--gn)':'var(--rd)';
     const rsiColor=r.rsi>70?'var(--rd)':r.rsi<30?'var(--gn)':'var(--t2)';
-    return`<tr style="cursor:pointer" onclick="document.getElementById('inp').value='${r.sym}';go()"><td><span class="tg su"><span class="dd b"></span>${r.sym}</span> ${r.name}</td><td style="font-family:'IBM Plex Mono'">${r.price.toFixed(2)} <span style="font-size:8px;color:${chgColor}">${r.chg>=0?'+':''}${r.chg.toFixed(1)}%</span></td><td><span class="ps ${cls}">${txt}</span></td><td style="color:var(--gn);font-family:'IBM Plex Mono';font-weight:700">${r.score.toFixed(0)}%</td><td style="font-family:'IBM Plex Mono';color:${rsiColor}">${r.rsi?.toFixed(0)||'-'}</td><td style="font-size:9px;color:var(--t2)">${r.bu}↑ ${r.be}↓ من ${r.tot}</td></tr>`;
+    return`<tr style="cursor:pointer" onclick="document.getElementById('inp').value='${r.sym}';go()"><td><span class="tg su"><span class="dd b"></span>${r.sym}</span> ${r.name}</td><td style="font-family:'IBM Plex Mono'">${r.price.toFixed(2)} <span style="font-size:8px;color:${chgColor}">${r.chg>=0?'+':''}${r.chg.toFixed(1)}%</span></td><td><span class="ps ${cls}">${txt}</span></td><td style="color:var(--gn);font-family:'IBM Plex Mono';font-weight:700">${r.score.toFixed(0)}%</td><td style="font-family:'IBM Plex Mono';color:${rsiColor}">${r.rsi?.toFixed(0)||'-'}</td><td style="font-size:10px">${r.aboveVwap?'<span style="color:var(--gn)">فوق ↑</span>':'<span style="color:var(--rd)">تحت ↓</span>'}</td><td style="font-family:'IBM Plex Mono';font-size:9px;color:${r.volRatio>1.5?'var(--gn)':'var(--t2)'}">${r.volRatio}x</td><td style="font-size:9px">${r.trendStr||'-'}</td><td style="font-family:'IBM Plex Mono';font-size:9px;color:var(--cy)">${r.smcZ||0}</td></tr>`;
   }).join('');
 
   prog.innerHTML=`<div style="color:var(--gn)">✅ تم فحص ${done} سهم — وجد <strong>${found}</strong> فرصة شراء${failed?' — '+failed+' سهم بدون بيانات':''}</div>`;
